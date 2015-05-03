@@ -1,0 +1,16 @@
+[package]
+name = "shim"
+version = "0.1.0"
+authors = ["GregDavidson <greg.davidson+git@gmail.com>"]
+
+[dependencies]
+getopts = "0.2.4"
+postgres = "0.8.7"
+# lazy_static = "0.1.*"
+
+[dependencies.hyper]
+git = "https://github.com/hyperium/hyper"
+
+# get latest
+[dependencies.lazy_static]
+git = "https://github.com/Kimundi/lazy-static.rs"
