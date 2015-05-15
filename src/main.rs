@@ -1,15 +1,14 @@
 #[macro_use]
 extern crate lazy_static;
-
 extern crate getopts;
-// use getopts::Options;
-use std::env;
+// extern crate hyper; // more than we need?
+extern crate tiny_http;
 
 lazy_static! {
     static ref PGM_ARGV: Vec<String> = {
         // let mut argv = Vec::new();
-        // argv = env::args().collect();
-        let argv = env::args().collect();
+        // argv = std::env::args().collect();
+        let argv = std::env::args().collect();
         argv
     };
     static ref PGM_NAME: String = PGM_ARGV[0].clone();
@@ -38,17 +37,29 @@ lazy_static! {
         = match PGM_OPTIONS.parse( PGM_ARGS.iter() ) {
             Ok(m) => m,
             Err(f) => {
-                // env::set_exit_status(1);
+                // std::env::set_exit_status(1);
                 panic!(f.to_string());
             }
     };
-}                              // lazy_static
+}                              // lazy_static!
 
 fn print_usage() {
     let brief = format!("Usage: {} [options]...", *PGM_NAME);
     print!("{}", PGM_OPTIONS.usage(&brief));
 }
 
+// define database connection pool structures
+
+// Hyper manages workers!
+// tiny-http says it does too!
+
+
 fn main() {
-    if PGM_OPTS.opt_present("help") { print_usage() };
+  if PGM_OPTS.opt_present("help") {
+	  print_usage();
+		return;
+	}
+  let port = 
+	let server = tiny_http::ServerBuilder::new().
+			with_port(port).build().unwrap();
 }
