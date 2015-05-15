@@ -1,3 +1,4 @@
+#![feature(exit_status)]
 #[macro_use]
 extern crate lazy_static;
 extern crate getopts;
@@ -34,13 +35,11 @@ lazy_static! {
     };
     
     static ref PGM_OPTS: getopts::Matches
-        = match PGM_OPTIONS.parse( PGM_ARGS.iter() ) {
-            Ok(m) => m,
-            Err(f) => {
-                // std::env::set_exit_status(1);
-                panic!(f.to_string());
-            }
-    };
+			= PGM_OPTIONS.parse( PGM_ARGS.iter() ).
+				unwrap_or_else( |err| {
+      		std::env::set_exit_status(1); // unstable 1.1 !!
+      		panic!(err.to_string());
+   			} );
 }                              // lazy_static!
 
 fn print_usage() {
@@ -59,7 +58,12 @@ fn main() {
 	  print_usage();
 		return;
 	}
-  let port = 
+  let port: u16 = PGM_OPTS.opt_str("http-port").unwrap().
+		parse::<u16>().unwrap_or_else( |err| {
+        std::env::set_exit_status(2); // unstable 1.1 !!
+        panic!(err.to_string());
+    } );
 	let server = tiny_http::ServerBuilder::new().
 			with_port(port).build().unwrap();
+  
 }
