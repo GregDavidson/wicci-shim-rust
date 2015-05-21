@@ -62,6 +62,7 @@ lazy_static! {
 
 type OptStr = String; // want &'static str !!
 // type BufRdr = BufReader<&[u8]>;
+type StrVec = Vec<String>;
 
 fn opt_str(opt_name: &str, dfalt: &str)->OptStr {
   PGM_OPTS.opt_str(opt_name).unwrap_or(dfalt.to_string()) // to_string !!
@@ -93,72 +94,94 @@ fn print_usage() {
 // Hyper manages workers!
 // tiny-http says it does too!
 
+// fn str_reader<'a>(s: &'a str)->BufReader<&'a[u8]> { BufReader::new(s.as_bytes()) }
+
 fn str_reader<'a>(s: &'a str)->BufReader<&'a[u8]> { BufReader::new(s.as_bytes()) }
 
-// fn html<'a>(title: &'a str, contents: &str)->BufReader<&'a[u8]> {
-fn html(title: &str, contents: &str)->String {
-//  str_reader(
-    format!("<html>
-  <head>
-    <title>{0}</title>
-  </head>
-  <body>
-    <h1>{0}</h1>
-    {1}
+
+fn html_title_h1_contents(
+  title: &str, h1: &str, contents: String
+)->String {
+  let h1_elem = if h1.eq("") { "".to_string() } else {
+    format!("\n    <h1>{}</h1>", h1)
+  };
+  format!("<html>
+	<head>
+		<title>{0}</title>
+	</head>
+	<body>{1}
+    {2}
   </body>
-</html>", title, contents
+</html>", title, h1_elem, contents
     )
-//  )
+}
+
+fn html_text(text: String)->String {
+    // should translate illegal chars!!
+    text
+}
+fn html_stat(text: &'static str)->String {
+    html_text(text.to_string())            // to_string() :( !!
+}
+fn html_format(text: fmt::Arguments)->String {
+    // should translate illegal chars!!
+    html_text(format!("{}", text))
+}
+
+fn html(title_h1: &'static str, contents: String)->String {
+  let title_h1_str = html_stat(title_h1);
+  html_title_h1_contents(&title_h1_str, &title_h1_str, contents)
 }
 
 fn html_id(id_str: &str)->String { // stricter than standard!
     let re = regex!(r"^[[:alpha:]]+[[:alnum:]]*$");
-    assert_eq!(re.is_match(id_str), true);
+    assert_eq!(re.is_match(&id_str), true);
     id_str.to_ascii_lowercase()
 }
 fn html_attr(attr_str: &str)->String { html_id(attr_str) }
-fn html_tag(tag_str: &str)->String { html_id(tag_str) }
+fn html_tag(tag_str: &'static str)->String {
+  html_id(&tag_str)
+}
 fn html_val(value_str: &str)->String { // stricter than standard!
     let re = regex!(r"^[[:graph:] ]*$"); // spaces allowed!
-    assert_eq!(re.is_match(value_str), true);
+    assert_eq!(re.is_match(&value_str), true);
     let quote = regex!("\"");
-    quote.replace_all(value_str, "&quot;")
-}
-fn html_text(text: &str)->String {
-    // should translate illegal chars!!
-    text.to_string()            // to_string() :( !!
-}
-fn html_format(text: fmt::Arguments)->String {
-    // should translate illegal chars!!
-    html_text(&format!("{}", text))
+    quote.replace_all(&value_str, "&quot;")
 }
 
-// fn html_attrs(attrs: &[&str])-> String {
-//   attrs.chunks(2).map( |pair| {
-//     format!(" {}=\"{}\"", html_attr(pair[0]), html_val(pair[1]))
-//   } ).concat()
-// }
+/* fn html_attrs(attrs: StrVec)-> String {
+  attrs.chunks(2).map( |pair| {
+    format!(" {}=\"{}\"", html_attr(pair[0]), html_val(pair[1]))
+  } ).concat()
+} */
 
-fn html_attrs(attrs: &[&str])-> String {
+// fn html_attrs(attrs: &[String])-> String {
+fn html_attrs(attrs: StrVec)-> String {
   let mut buf = String::new();
   for pair in attrs.chunks(2) {
-    write!(&mut buf, " {}=\"{}\"", html_attr(pair[0]), html_val(pair[1]));
+    write!(
+      &mut buf, " {}=\"{}\"", html_attr(&pair[0]), &html_val(&pair[1])
+    );
   }
   buf
 }
 
-fn html_elem(tag: &str, attrs: &[&str], contents: &[&str])-> String {
+fn html_elem(
+//  tag: &'static str, attrs: &[String], contents: &[String]
+tag: &'static str, attrs: StrVec, contents: StrVec
+)-> String {
   format!("<{0}{1}>\n{2}\n</{0}>\n",
           html_tag(tag), html_attrs(attrs),
           contents.concat() )
 }
 
-fn html_elm(tag: &str, contents: &[&str])-> String {
+// fn html_elm(tag: &'static str, contents: &[String])-> String {
+fn html_elm(tag: &'static str, contents: StrVec)-> String {
   format!("<{0}>\n{1}\n</{0}>\n",
           html_tag(tag), contents.concat() )
 }
 
-fn html_el(tag: &str, contents: &str)-> String {
+fn html_el(tag: &'static str, contents: String)-> String {
   format!("<{0}>\n{1}\n</{0}>\n",
           html_tag(tag), contents)
 }
@@ -180,7 +203,7 @@ fn main() {
       let headers: Vec<tiny_http::Header> = Vec::new();
 //      let data_reader = BufReader::new("".as_bytes());
       r.respond(tiny_http::Response::new(
-        tiny_http::StatusCode::from(404), headers, str_reader(""), None, None
+        tiny_http::StatusCode::from(404), headers, str_reader(&html_stat("")), None, None
 //     tiny_http::StatusCode::from(404), headers, data_reader, None, None
       ));
       continue;
@@ -201,16 +224,16 @@ fn main() {
       let headers: Vec<tiny_http::Header> = Vec::new();
 //      let html_reader = BufReader::new("".as_bytes());
       let html_str = html("shim response",
-        &html_elm(
-          "dl", &[
-            &html_el("dt", &html_text("method")),
-            &html_el("dd", &format!("{}", r.get_method())),
-            &html_el("dt", &html_text("url")),
-            &html_el("dd", &format!("{}", r.get_url())),
-            &html_el("dt", &html_text("http_version")),
-            &html_el("dd", &format!("{}", r.get_http_version())),
-            &header_data
-          ]
+        html_elm(
+          "dl", vec!(
+            html_el("dt", html_stat("method")),
+            html_el("dd", format!("{}", r.get_method())),
+            html_el("dt", html_stat("url")),
+            html_el("dd", format!("{}", r.get_url())),
+            html_el("dt", html_stat("http_version")),
+            html_el("dd", format!("{}", r.get_http_version())),
+            header_data
+          )
         )
       );
       let html_reader = str_reader( &html_str );
@@ -222,4 +245,3 @@ fn main() {
     println!("");
   }
 }
-
