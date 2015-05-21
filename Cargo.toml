@@ -4,10 +4,16 @@ version = "0.1.0"
 authors = ["GregDavidson <greg.davidson+git@gmail.com>"]
 
 [dependencies]
-getopts = "0.2.10"
+getopts = "0.2.11"
 postgres = "0.8.8"
 postgres_large_object = "0.3.1"
 # lazy_static = "0.1.*"
+libc = "0.1"
+regex = "0.1.30"
+regex_macros = "0.1.17"
+ascii = "0.5.0"
+
+## get latest versions of:
 
 # [dependencies.hyper]
 # git = "https://github.com/hyperium/hyper"
@@ -15,6 +21,8 @@ postgres_large_object = "0.3.1"
 [dependencies.tiny_http]
 git = "https://github.com/frewsxcv/tiny-http"
 
-# get latest
 [dependencies.lazy_static]
 git = "https://github.com/Kimundi/lazy-static.rs"
+
+[dependencies.url]
+git = "https://github.com/servo/rust-url"
