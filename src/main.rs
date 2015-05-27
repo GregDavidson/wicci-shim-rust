@@ -14,48 +14,44 @@ extern crate regex;
 use libc::funcs::c95::ctype;
 use std::fmt::{self, Write};
 // use std::io::{self, Write};
-use std::io::{BufReader,Read};
+use std::io::{BufReader,Read,Cursor};
 use std::str::{FromStr};
 use std::ascii::{AsciiExt};
 use ascii::{AsciiStr, AsciiString};
 
-//use core::format::Write;
-
 lazy_static! {
-    static ref PGM_ARGV: Vec<String> = {
-        // let mut argv = Vec::new();
-        // argv = std::env::args().collect();
-        let argv = std::env::args().collect();
-        argv
-    };
-    static ref PGM_NAME: String = PGM_ARGV[0].clone();
-    static ref PGM_ARGS: &'static[String] = &PGM_ARGV[1..];
-    
-    static ref PGM_OPTIONS: getopts::Options = {
-        let mut opts = getopts::Options::new();
-        opts.optflag("h", "help", "print this help menu");
-        opts.optflag("d", "debug", "trace what's going on");
-        opts.optflag("D", "show-args", "show program arguments");
-	      opts.optflag("B", "debug-save-blobs", "save received blobs to files");
-	      opts.optopt("P", "http-port", "", ""); // dfalt: "8080";
-	      opts.optopt("F", "init-func", "", ""); // dfalt: "wicci_ready";
-	      // db connection attributes: see DBOption
-	      opts.optopt("", "db-host", "", "db server port"); // dfalt: "localhost"
-        opts.optopt("", "db-host-addr", "", "");
-        opts.optopt("", "db-port", "", ""); // dfalt: "5432"
-	      opts.optopt("", "db-name", "", ""); // "wicci1";
-        opts.optopt("", "db-user", "", "");
-	      opts.optopt("", "db-password", "", "");
-	      opts.optopt("", "db-connect-timeout", "", "");
-        opts
-    };
-    
-    static ref PGM_OPTS: getopts::Matches
-			  = PGM_OPTIONS.parse( PGM_ARGS.iter() ).
-				unwrap_or_else( |err| {
-      		  std::env::set_exit_status(1);
-      		  panic!(err.to_string());
-   			} );
+  static ref PGM_ARGV: Vec<String> = {
+    let argv = std::env::args().collect();
+    argv
+  };
+  static ref PGM_NAME: String = PGM_ARGV[0].clone();
+  static ref PGM_ARGS: &'static[String] = &PGM_ARGV[1..];
+  
+  static ref PGM_OPTIONS: getopts::Options = {
+    let mut opts = getopts::Options::new();
+    opts.optflag("h", "help", "print this help menu");
+    opts.optflag("d", "debug", "trace what's going on");
+    opts.optflag("D", "show-args", "show program arguments");
+	  opts.optflag("B", "debug-save-blobs", "save received blobs to files");
+	  opts.optopt("P", "http-port", "", ""); // dfalt: "8080";
+	  opts.optopt("F", "init-func", "", ""); // dfalt: "wicci_ready";
+	  // db connection attributes: see DBOption
+	  opts.optopt("", "db-host", "", "db server port"); // dfalt: "localhost"
+    opts.optopt("", "db-host-addr", "", "");
+    opts.optopt("", "db-port", "", ""); // dfalt: "5432"
+	  opts.optopt("", "db-name", "", ""); // "wicci1";
+    opts.optopt("", "db-user", "", "");
+	  opts.optopt("", "db-password", "", "");
+	  opts.optopt("", "db-connect-timeout", "", "");
+    opts
+  };
+  
+  static ref PGM_OPTS: getopts::Matches
+		= PGM_OPTIONS.parse( PGM_ARGS.iter() ).
+		unwrap_or_else( |err| {
+      std::env::set_exit_status(1);
+      panic!(err.to_string());
+   	} );
 }                              // lazy_static!
 
 // fetch options which have a default
@@ -94,43 +90,35 @@ fn print_usage() {
 // Hyper manages workers!
 // tiny-http says it does too!
 
-// fn str_reader<'a>(s: &'a str)->BufReader<&'a[u8]> { BufReader::new(s.as_bytes()) }
+fn cursor_on<D>(data: D)->Cursor<Vec<u8>> where D: Into<Vec<u8>> {
+  Cursor::new(data.into())
+}
 
-fn str_reader<'a>(s: &'a str)->BufReader<&'a[u8]> { BufReader::new(s.as_bytes()) }
+fn str_response(
+  status_code: i32, headers: Vec<tiny_http::Header>, str_data: String
+) -> tiny_http::Response<Cursor<Vec<u8>>> {
+  let data_len = str_data.len();
+  tiny_http::Response::new(
+    tiny_http::StatusCode::from(status_code), headers,
+    cursor_on(str_data), Some(data_len), None )
+}
 
-
-fn html_title_h1_contents(
-  title: &str, h1: &str, contents: String
-)->String {
-  let h1_elem = if h1.eq("") { "".to_string() } else {
-    format!("\n    <h1>{}</h1>", h1)
-  };
-  format!("<html>
-	<head>
-		<title>{0}</title>
-	</head>
-	<body>{1}
-    {2}
-  </body>
-</html>", title, h1_elem, contents
-    )
+fn hdr_response(
+  status_code: i32, headers: Vec<tiny_http::Header>
+)-> tiny_http::Response<Cursor<Vec<u8>>> {
+  tiny_http::Response::new(
+    tiny_http::StatusCode::from(status_code), headers,
+    cursor_on(Vec::with_capacity(0)), Some(0), None )
 }
 
 fn html_text(text: String)->String {
-    // should translate illegal chars!!
-    text
+    text  // should translate illegal chars!!
 }
-fn html_stat(text: &'static str)->String {
+fn html_static(text: &'static str)->String {
     html_text(text.to_string())            // to_string() :( !!
 }
 fn html_format(text: fmt::Arguments)->String {
-    // should translate illegal chars!!
     html_text(format!("{}", text))
-}
-
-fn html(title_h1: &'static str, contents: String)->String {
-  let title_h1_str = html_stat(title_h1);
-  html_title_h1_contents(&title_h1_str, &title_h1_str, contents)
 }
 
 fn html_id(id_str: &str)->String { // stricter than standard!
@@ -149,13 +137,6 @@ fn html_val(value_str: &str)->String { // stricter than standard!
     quote.replace_all(&value_str, "&quot;")
 }
 
-/* fn html_attrs(attrs: StrVec)-> String {
-  attrs.chunks(2).map( |pair| {
-    format!(" {}=\"{}\"", html_attr(pair[0]), html_val(pair[1]))
-  } ).concat()
-} */
-
-// fn html_attrs(attrs: &[String])-> String {
 fn html_attrs(attrs: StrVec)-> String {
   let mut buf = String::new();
   for pair in attrs.chunks(2) {
@@ -166,24 +147,46 @@ fn html_attrs(attrs: StrVec)-> String {
   buf
 }
 
-fn html_elem(
-//  tag: &'static str, attrs: &[String], contents: &[String]
-tag: &'static str, attrs: StrVec, contents: StrVec
+fn html_tag_attrs_contents(
+  tag: &'static str, attrs: StrVec, contents: StrVec
 )-> String {
   format!("<{0}{1}>\n{2}\n</{0}>\n",
           html_tag(tag), html_attrs(attrs),
           contents.concat() )
 }
 
-// fn html_elm(tag: &'static str, contents: &[String])-> String {
-fn html_elm(tag: &'static str, contents: StrVec)-> String {
-  format!("<{0}>\n{1}\n</{0}>\n",
-          html_tag(tag), contents.concat() )
+fn html_tag_contents(tag: &'static str, contents: StrVec)-> String {
+  html_tag_attrs_contents(tag, Vec::with_capacity(0), contents)
 }
 
-fn html_el(tag: &'static str, contents: String)-> String {
-  format!("<{0}>\n{1}\n</{0}>\n",
-          html_tag(tag), contents)
+fn html_tag_content(tag: &'static str, contents: String)-> String {
+  html_tag_contents(tag, vec!(contents))
+}
+
+fn html_title_h1_contents(
+  title: Option<&str>, h1: Option<&str>, contents: StrVec
+)->String {
+  html_tag_contents( "html", vec!(
+      html_tag_content( "head", match title {
+          None => "".to_string(),
+          Some(s) => html_tag_content("title", s.to_string())
+      }),
+      html_tag_content( "body", {
+          let mut v = vec![ match h1 {
+            None => "".to_string(),
+            Some(s) => html_tag_content("h1", s.to_string())
+          } ];
+          v.extend(contents.into_iter());
+          v.concat()
+      })
+  ))
+}
+
+fn html_title_contents(title_h1: &'static str, contents: String)->String {
+  let title_h1_str = html_static(title_h1);
+  html_title_h1_contents(
+    Some(&title_h1_str), Some(&title_h1_str), vec![contents]
+  )
 }
 
 fn main() {
@@ -202,10 +205,12 @@ fn main() {
     if r.get_url() == "/favicon.ico" {
       let headers: Vec<tiny_http::Header> = Vec::new();
 //      let data_reader = BufReader::new("".as_bytes());
-      r.respond(tiny_http::Response::new(
-        tiny_http::StatusCode::from(404), headers, str_reader(&html_stat("")), None, None
+      r.respond( hdr_response(404, Vec::with_capacity(0)) );
+      // r.respond(tiny_http::Response::new(
+      //   tiny_http::StatusCode::from(404), headers, cursor_on(Vec::with_capacity(0)), Some(0), None
+        //        tiny_http::StatusCode::from(404), headers, str_reader(&html_static("")), None, None
 //     tiny_http::StatusCode::from(404), headers, data_reader, None, None
-      ));
+//      ));
       continue;
     }
     println!("method: {}", r.get_method());
@@ -223,24 +228,20 @@ fn main() {
       }
       let headers: Vec<tiny_http::Header> = Vec::new();
 //      let html_reader = BufReader::new("".as_bytes());
-      let html_str = html("shim response",
-        html_elm(
+      let html_str = html_title_contents("shim response",
+        html_tag_contents(
           "dl", vec!(
-            html_el("dt", html_stat("method")),
-            html_el("dd", format!("{}", r.get_method())),
-            html_el("dt", html_stat("url")),
-            html_el("dd", format!("{}", r.get_url())),
-            html_el("dt", html_stat("http_version")),
-            html_el("dd", format!("{}", r.get_http_version())),
+            html_tag_content("dt", html_static("method")),
+            html_tag_content("dd", format!("{}", r.get_method())),
+            html_tag_content("dt", html_static("url")),
+            html_tag_content("dd", format!("{}", r.get_url())),
+            html_tag_content("dt", html_static("http_version")),
+            html_tag_content("dd", format!("{}", r.get_http_version())),
             header_data
           )
         )
       );
-      let html_reader = str_reader( &html_str );
-      r.respond(tiny_http::Response::new(
-        tiny_http::StatusCode::from(200), headers,
-        html_reader,
-        None, None ));
+      r.respond(str_response(200, headers, html_str));
     }
     println!("");
   }
