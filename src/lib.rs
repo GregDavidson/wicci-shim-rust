@@ -1,22 +1,23 @@
 #![feature(plugin)]
 #![plugin(regex_macros)]
-#![feature(exit_status)]  // set_exit_status unstable as of 1.1
-#[macro_use]
-extern crate regex_macros;
+// #![feature(exit_status)]  // set_exit_status unstable as of 1.1
+// #[macro_use]
+// extern crate regex_macros;
 extern crate regex;
 extern crate tiny_http;
 // extern crate ascii;
 extern crate libc;
-mod tinier;
-mod html;
 use tinier::*;
 use html::*;
+mod tinier;
+mod html;
 
-use std::fmt::{self, Write};
+// use std::fmt::{self, Write};
+use std::fmt::Write;
 
-use libc::funcs::c95::ctype;
+// use libc::funcs::c95::ctype;
 // use std::io::{self, Write};
-use std::io::{BufReader,Read,Cursor};
+// use std::io::{BufReader,Read,Cursor};
 use std::str::{FromStr};
 
 // use tiny_http::{Server};

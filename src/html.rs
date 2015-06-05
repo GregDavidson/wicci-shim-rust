@@ -1,6 +1,6 @@
-#![feature(plugin)]
+// #![feature(plugin)]
 #![plugin(regex_macros)]
-#[macro_use]
+// #[macro_use]
 use std::ascii::{AsciiExt};
 // extern crate ascii;
 // use ascii::{AsciiStr, AsciiString};
