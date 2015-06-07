@@ -6,11 +6,11 @@
 extern crate regex;
 extern crate tiny_http;
 // extern crate ascii;
-extern crate libc;
+// extern crate libc;
 use tinier::*;
 use html::*;
-mod tinier;
-mod html;
+pub mod tinier;
+pub mod html;
 
 // use std::fmt::{self, Write};
 use std::fmt::Write;
@@ -31,19 +31,19 @@ pub fn echo_requests(server: tiny_http::Server) {
   let get_ = tiny_http::Method::from_str("GET").unwrap();
   let put_ = tiny_http::Method::from_str("PUT").unwrap();
 	for r in server.incoming_requests() {
-    if r.get_url() == "/favicon.ico" {
+    if r.url() == "/favicon.ico" {
       r.respond( hdr_response(404, Vec::with_capacity(0)) );
       continue;
     }
-    println!("method: {}", r.get_method());
-    println!("url: {}", r.get_url());
-    println!("http_version: {}", r.get_http_version());
-    for h in r.get_headers().iter() {
+    println!("method: {}", r.method());
+    println!("url: {}", r.url());
+    println!("http_version: {}", r.http_version());
+    for h in r.headers().iter() {
       println!("{}: {}", h.field, h.value);
     }
-    if r.get_method().eq(&get_) || r.get_method().eq(&put_) {
+    if r.method().eq(&get_) || r.method().eq(&put_) {
       let mut header_data = String::new();
-      for h in r.get_headers().iter() {
+      for h in r.headers().iter() {
         writeln!(&mut header_data,
                  "<dt>{}</dt>\n<dd>{}</dd>",
                  h.field, h.value );
@@ -53,11 +53,11 @@ pub fn echo_requests(server: tiny_http::Server) {
         html_tag_contents(
           "dl", vec!(
             html_tag_content("dt", html_static("method")),
-            html_tag_content("dd", format!("{}", r.get_method())),
+            html_tag_content("dd", format!("{}", r.method())),
             html_tag_content("dt", html_static("url")),
-            html_tag_content("dd", format!("{}", r.get_url())),
+            html_tag_content("dd", format!("{}", r.url())),
             html_tag_content("dt", html_static("http_version")),
-            html_tag_content("dd", format!("{}", r.get_http_version())),
+            html_tag_content("dd", format!("{}", r.http_version())),
             header_data
           )
         )
