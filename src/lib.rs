@@ -1,5 +1,7 @@
 #![feature(plugin)]
+#![cfg_attr(feature = "pattern", feature(pattern))]
 #![plugin(regex_macros)]
+// #![feature(pattern)]
 // #![feature(exit_status)]  // set_exit_status unstable as of 1.1
 // #[macro_use]
 // extern crate regex_macros;
