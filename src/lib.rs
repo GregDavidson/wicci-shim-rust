@@ -1,28 +1,14 @@
 #![feature(plugin)]
-#![cfg_attr(feature = "pattern", feature(pattern))]
 #![plugin(regex_macros)]
-// #![feature(pattern)]
-// #![feature(exit_status)]  // set_exit_status unstable as of 1.1
-// #[macro_use]
-// extern crate regex_macros;
 extern crate regex;
 extern crate tiny_http;
-// extern crate ascii;
-// extern crate libc;
 use tinier::*;
 use html::*;
 pub mod tinier;
 pub mod html;
 
-// use std::fmt::{self, Write};
 use std::fmt::Write;
-
-// use libc::funcs::c95::ctype;
-// use std::io::{self, Write};
-// use std::io::{BufReader,Read,Cursor};
-use std::str::{FromStr};
-
-// use tiny_http::{Server};
+use std::str::FromStr;
 
 // define database connection pool structures
 

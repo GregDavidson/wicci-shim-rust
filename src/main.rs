@@ -10,7 +10,6 @@ extern crate tiny_http;       // more modest
 use std::sync::Arc;
 use std::thread;
 use std::str::FromStr;
-use std::io::Read;
 
 extern crate ascii;
 use ascii::AsciiStr;
@@ -190,96 +189,6 @@ fn pg_prepare(db: & Connection) -> Statement {
   stmt
 }
 
-/*
-let s = [0u8, 1u8, 2u8];
-let mut v = Vec::new();
-v.extend(s.iter().map(|&i| i)); // requires a closure on every value
-v.extend(s.to_vec().into_iter()); // allocates an extra copy of the slice
-
-v.extend(s.iter().cloned());
-
-That is effectively equivalent to using .map(|&i| i) and it does minimal copying.
-
-v + &s will work on beta, which I believe is just similar to pushing each value onto the original Vec.
-
-*/
-
-// type Buf = &mut Option<Box<Vec<u8>>>;
-
-fn append_bytes(maybe_buf: &mut Option<&mut Vec<u8>>, bytes: &[u8]) -> usize {
-  match maybe_buf.as_mut() {
-    None => { },
-    Some(buf) => {
-      buf.extend(bytes.iter().cloned());
-    }
-  }
-  bytes.len()
-}
-
-fn append_bytes_delim(
-  maybe_buf: &mut Option<&mut Vec<u8>>, bytes: &[u8], delim: &[u8]
-) -> usize {
-  append_bytes(maybe_buf, bytes) + append_bytes(maybe_buf, delim)
-}
-
-fn append_headers(
-  maybe_buf: &mut Option<&mut Vec<u8>>, hdrs: &[tiny_http::Header]
-) -> usize {
-  let cs = b": ";
-  let nl = b"\r\n";             // need '\r' for testing
-  hdrs.iter().fold(0, |_i, h| {
-    append_bytes_delim(maybe_buf, &h.field.as_str().as_bytes(), cs)
-      + append_bytes_delim(maybe_buf, &h.value.as_bytes(), nl)
-  })
-}
-
-fn append_body(
-  maybe_buf: &mut Option<&mut Vec<u8>>, body: &mut Read, size: usize
- ) -> usize {
-  match maybe_buf.as_mut() {
-    None => size,
-    Some(buf) => body.read_to_end(buf).unwrap()
-  }
-}
-
-fn append_http_version(
-  maybe_buf: &mut Option<&mut Vec<u8>>, v: &tiny_http::HTTPVersion
-) -> usize {
-  match maybe_buf.as_mut() {
-    None => { },
-    Some(b) => {
-      let (major, minor) = (v.0, v.1);
-      assert!(major < 10);
-      assert!(minor < 10);
-      b.push(b'0' + major);
-      b.push(b'.');
-      b.push(b'0' + minor);
-      b.push(b' ');
-    }
-  }
-  4
-}
-
-fn append_request_sans_body(
-  b: &mut Option<&mut Vec<u8>>, r: &tiny_http::Request
-) -> usize {
-  let sp = b" ";
-  let nl = b"\r\n";             // need '\r' for testing
-  append_bytes_delim(b, &r.method().as_str().as_bytes(), sp)
-    + append_bytes_delim(b, &r.url().as_bytes(), sp)
-    + append_http_version(b, &r.http_version())
-    + append_headers(b, r.headers())
-    + append_bytes(b, nl)
-}
-
-fn append_request(
-  b: &mut Option<&mut Vec<u8>>, r: &mut tiny_http::Request
-) -> usize {
-  let len_sans_body = append_request_sans_body(b, r);
-  let body_len = r.body_length().unwrap_or(0);
-  let mut body_reader = r.as_reader();
-  len_sans_body + append_body(b, body_reader, body_len)
-}
 
 #[cfg(feature = "never")]
 fn make_lower<T: AsciiExt>(bytes: &mut T) {
@@ -312,9 +221,9 @@ fn pg_stmt_req_rows<'a>(
   stmt: &'a Statement, req: &'a mut tiny_http::Request
 )-> postgres::rows::Rows<'a> {
   let mut no_vec:  Option<&mut Vec<u8>> = None;
-  let req_len = append_request(&mut no_vec, req);
+  let req_len = tinier::append_request(&mut no_vec, req);
   let mut req_buf = Vec::<u8>::with_capacity(req_len);
-  let req_len_ = append_request(&mut Some(&mut req_buf), req);
+  let req_len_ = tinier::append_request(&mut Some(&mut req_buf), req);
   assert!(req_len == req_len_);
   //    pg_stmt_buf_rows(stmt, req_buf)
   stmt.query(&[&req_buf]).unwrap_or_else( | err | {
@@ -405,7 +314,7 @@ fn handle_requests(server: Arc<tiny_http::Server>) {
 }
 
 fn main() {
-  if PGM_OPTS.opt_present("help") { print_usage(); }
+  if PGM_OPTS.opt_present("help") { print_usage(); return; }
 	let port = *HTTP_PORT;
 	let server = tiny_http::ServerBuilder::new().
 		with_port(port).build().unwrap_or_else( | err | {

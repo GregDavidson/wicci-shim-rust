@@ -1,9 +1,5 @@
-// #![feature(plugin)]
 #![plugin(regex_macros)]
-// #[macro_use]
 use std::ascii::{AsciiExt};
-// extern crate ascii;
-// use ascii::{AsciiStr, AsciiString};
 
 use std::fmt::{self, Write};
 
