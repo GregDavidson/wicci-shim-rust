@@ -3,20 +3,11 @@
 
 use std::io::Write;
 use super::{options,db};
-
-// copy of def in main.rs -- see that one!!
-macro_rules! errorln(
-    ($($arg:tt)*) => (
-      match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-        Ok(_) => {},
-        Err(x) => panic!("Unable to write to stderr: {}", x),
-      }
-    )
-);
+// use text;
 
 use std::process;
 
-use postgres::Statement;
+use postgres::stmt::Statement;
 
 type Bytes = [u8];
 type ByteVec = Vec<u8>;
@@ -42,12 +33,26 @@ static HOST: &'static [u8] = b"wicci.org";
 // ) -> ByteVec {
 // }
 
+// error: use of unstable library feature 'iter_arith':
+//   bounds recently changed (see issue #27739)
+// fn len_all(bytes: &[&Bytes]) ->usize {
+//   bytes.iter().map( | x | x.len() ).sum()
+// }
+
 fn len_all(bytes: &[&Bytes]) ->usize {
   let mut len: usize = 0;
-  for b in bytes.iter() {
-    len += b.len();
-  }
+  for b in bytes.iter() {len += b.len(); }
   len
+}
+
+#[test]
+fn test_len_all() {
+  assert_eq!( len_all(&[]), 0 );
+  assert_eq!( len_all(&[b""]), 0 );
+  assert_eq!( len_all(&[b"-"]), 1 );
+  assert_eq!( len_all(&[b"--"]), 2 );
+  assert_eq!( len_all(&[b"", b""]), 0 );
+  assert_eq!( len_all(&[b"-", b"-"]), 2 );
 }
 
 fn cat2vec(byte_vecs: &[&Bytes]) -> ByteVec {
@@ -58,17 +63,34 @@ fn cat2vec(byte_vecs: &[&Bytes]) -> ByteVec {
   vec
 }
 
+#[test]
+fn test_cat2vec() {
+  assert_eq!( cat2vec(&[]), b"" );
+  assert_eq!( cat2vec(&[b""]), b"" );
+  assert_eq!( cat2vec(&[b"-"]), b"-" );
+  assert_eq!( cat2vec(&[b"--"]), b"--" );
+  assert_eq!( cat2vec(&[b"", b""]), b"" );
+  assert_eq!( cat2vec(&[b"1", b"2"]), b"12" );
+}
+
 fn path_host_user_server(path: &Bytes, host: &Bytes, user: &Bytes, server: &Bytes) -> ByteVec {
   cat2vec( &[
     b"GET /", path,
     b"?host=",   host,
-    b"&",   user,
+    b"&user=",   user,
     b" HTTP/1.1\r\nHost: ",   server,
-    b"\r\n\r\n"] )
+    b"\r\n"] )
 }
 
 fn path_username_host(path: &Bytes, username: &Bytes, host: &Bytes) -> ByteVec {
   path_host_user_server(path, host, &cat2vec( &[username, b"@", host] ) , SERVER)
+}
+
+#[test]
+fn test_path_username_host() {
+  let bv: &[u8]
+    = b"GET /P?host=H&user=U@H HTTP/1.1\r\nHost: localhost:8080\r\n";
+  assert_eq!( path_username_host(b"P", b"U", b"H"), bv );
 }
 
 fn path_req(path: &Bytes) -> ByteVec {
@@ -80,42 +102,33 @@ fn path_req(path: &Bytes) -> ByteVec {
 // implement fmt::Display for Bytes and ByteVec !!
 
 fn test_with( stmt: &Statement, req_buf: &Bytes ) {
-  let rows = stmt.query(&[&req_buf]).unwrap_or_else( | err | {
+  let no_body: &Bytes = b"";
+  let _body: &str = "_body";
+  let rows = stmt.query(&[&req_buf, &no_body, &_body]).unwrap_or_else( | err | {
     // log error!!
     // send client sad Reponse structure!!
-    // continue to next requset!!
-    let vec = Vec::from(req_buf);
+    // continue to next request!!
+//    let buf = String::from_utf8(req_buf).unwrap_or(String::from("???"));
+    let vec = Vec::from(req_buf); // can we do away with this??
     let buf = String::from_utf8(vec).unwrap_or(String::from("???"));
     errorln!("test_with db query error {:?} on {}", err, &buf);
     process::exit(40);
   });
   for row in rows {
-    let mut hdr_bytes: Vec<u8> = row.get(0);
-    super::make_lower_vec_u8(&mut hdr_bytes);    
-    let text_bytes:Vec<u8> = row.get(1);
-    let bin_bytes:Vec<u8> = row.get(2);
-    print!("{:?}:", &hdr_bytes);
-    match hdr_bytes.as_slice() {
-      b"_body_bin" => {
-        println!(" len={} md5={}", bin_bytes.len(), "??" );
-        if text_bytes.len() != 0 {
-          print!("!! ++ text body:");
-          println!(" len={} md5={}\n{:?}", bin_bytes.len(), "??", text_bytes );
-        }
-      },
-      b"_body" => {
-        println!("");
-        if bin_bytes.len() != 0 {
-          print!("+!!+ bin body:");
-          println!(" len={} md5={}", bin_bytes.len(), "??" );
-        }
-        print!(" len={} md5={}\n{:?}", text_bytes.len(), "??", text_bytes );
-      },
+    let hdr: String = row.get(0);
+    let text_val: String = row.get_opt(1).unwrap_or("".to_string());
+    let bin_val:Vec<u8> = row.get_opt(2).unwrap_or(vec![]);
+    print!("{}", hdr);
+    if bin_val.len() != 0 {
+      print!(" [{}]", bin_val.len());
+    }
+    match hdr.as_str() {
+      "_body" => { println!( ":\n{}", text_val ); },
       _ =>  {
-        println!(" {:?}", text_bytes);
-        if bin_bytes.len() != 0 {
-          print!("+!!+ bin body:");
-          println!(" len={} md5={}", bin_bytes.len(), "??" );
+        if text_val != "" {
+          println!( ": {}", text_val);
+        } else {
+            println!( "" );
         }
       }
     }
@@ -126,8 +139,9 @@ pub fn do_tests() {
   match options::opt_str("test") {
     None => { },
     Some(test_name) => {
+      println!("Preparing test {}", test_name);
       let db = db::connect();
-      let stmt = db::prepare(&db);
+      let stmt = db::prepare_query(&db, &*options::WICCI_SERVE_SQL);
       match &test_name[..] {
         "simple" => test_with( &stmt, &path_req(b"simple") ),
         "fancy" => test_with( &stmt, &path_req(b"fancy") ),

@@ -6,17 +6,8 @@ use std::io::{Read,Cursor};
 use tiny_http;
 use std::str::FromStr;
 use std::process;
-
-// copy of def in main.rs -- see that one!!
-macro_rules! errorln(
-    ($($arg:tt)*) => (
-      use std::io::Write;
-      match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-        Ok(_) => {},
-        Err(x) => panic!("Unable to write to stderr: {}", x),
-      }
-    )
-);
+use html;
+use std::fmt::Write;
 
 lazy_static! {
   pub static ref GET: tiny_http::Method = tiny_http::Method::from_str("GET").unwrap();
@@ -26,8 +17,7 @@ lazy_static! {
 pub fn open_server(port: u16) -> tiny_http::Server {
   tiny_http::ServerBuilder::new().
 		with_port(port).build().unwrap_or_else( | err | {
-      // log failure!!
-      // shutdown server gracefully!!
+      // log failure!! shutdown server gracefully!!
       errorln!("open_server fails with {:?}", err);
       process::exit(10);
 		})
@@ -134,6 +124,57 @@ pub fn append_request(
   let body_len = r.body_length().unwrap_or(0);
   let mut body_reader = r.as_reader();
   len_sans_body + append_body(b, body_reader, body_len)
+}
+
+pub fn echo_requests(server: tiny_http::Server) {
+	for r in server.incoming_requests() {
+    if r.url() == "/favicon.ico" {
+      r.respond( hdr_response(404, Vec::with_capacity(0)) );
+      continue;
+    }
+    println!("method: {}", r.method());
+    println!("url: {}", r.url());
+    println!("http_version: {}", r.http_version());
+    for h in r.headers().iter() {
+      println!("{}: {}", h.field, h.value);
+    }
+    if r.method().eq(&*GET) || r.method().eq(&*PUT) {
+      let mut header_data = String::new();
+      for h in r.headers().iter() {
+        writeln!(&mut header_data,
+                 "<dt>{}</dt>\n<dd>{}</dd>",
+                 h.field, h.value ).unwrap();
+        // and if unwrap() fails??
+      }
+      let headers: Vec<tiny_http::Header> = Vec::new();
+      let html_str = html::html_title_contents("shim response",
+        html::html_tag_contents(
+          "dl", vec!(
+            html::html_tag_content("dt", html::html_static("method")),
+            html::html_tag_content("dd", format!("{}", r.method())),
+            html::html_tag_content("dt", html::html_static("url")),
+            html::html_tag_content("dd", format!("{}", r.url())),
+            html::html_tag_content("dt", html::html_static("http_version")),
+            html::html_tag_content("dd", format!("{}", r.http_version())),
+            header_data
+          )
+        )
+      );
+      r.respond(str_response(200, headers, html_str));
+    }
+    println!("");
+  }
+}
+
+
+#[cfg(test)]
+mod test {
+  // use super::*;
+  
+  #[test]
+  fn test1() {
+    
+  }
 }
 
 // Notes for future improvements:

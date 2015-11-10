@@ -9,27 +9,17 @@
 
 use std::io::Write;
 
-// copy of def in main.rs -- see that one!!
-macro_rules! errorln(
-    ($($arg:tt)*) => (
-      match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-        Ok(_) => {},
-        Err(x) => panic!("Unable to write to stderr: {}", x),
-      }
-    )
-);
-
 // * need to define database connection pool structures!!
 
 use std::process;
 
-use postgres::{Connection, Statement, SslMode};
+use postgres::{Connection, SslMode};
+use postgres::stmt::Statement;
 use postgres::error::ConnectError;
 use postgres::Result as PG_Result;
 use std::result::Result;
 
 use super::options;
-
 
 fn try_prepare<'a>(db: &'a Connection, sql_str: &str) -> PG_Result<Statement<'a>> {
   let maybe_sql = db.prepare(sql_str);
@@ -53,8 +43,8 @@ pub fn prepare_query<'a>(db: &'a Connection, sql_str: &str) -> Statement<'a> {
   stmt
 }
 
-pub fn prepare(db: & Connection) -> Statement {
-  prepare_query(db, &*options::DB_QUERY_STR)
+pub fn prepare_wicci_serve(db: & Connection) -> Statement {
+  prepare_query(db, &*options::WICCI_SERVE_SQL)
 }
 
 fn try_init(conn: &mut Connection) -> PG_Result<()> {
@@ -63,6 +53,7 @@ fn try_init(conn: &mut Connection) -> PG_Result<()> {
     errorln!("db init error {:?}", err);
     process::exit(31);
   });
+  assert_eq!(rows.len(), 1);
   // how about we show the result if debugging??
   if *options::DBUG { println!("Session initialized"); }
   Ok(())
@@ -90,4 +81,121 @@ pub fn connect() -> Connection {
     process::exit(33);
 	});
   conn
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use options::*;
+  use std::io::Write;
+  // use postgres;
+  // use postgres::Connection;
+  // use postgres::stmt::Statement;
+  // use postgres::error::ConnectError;
+  // use postgres::Result as PG_Result;
+
+  // use encoding::{Encoding, EncoderTrap};
+  // use encoding::all::ISO_8859_1;
+
+  const NO_BYTES: &'static [u8] = b"";
+  const HUBBA_BYTES: &'static [u8] = b"Hubba\r\n Hubba\r\n";
+
+  const _BODY: &'static str = "_body";
+  const _BODY_BIN: &'static str = "_body_bin";
+  const _BODY_LO: &'static str = "_body_lo";
+
+//  lazy_static! {
+    // static ref CONNECTION: Connection = connect();
+    // pub static ref ECHO_HDRS: Statement<'static>
+    //   = prepare_query(*CONNECTION, wicci_sql("wicci_echo_headers"));
+    // pub static ref ECHO_BODY: Statement<'static>
+    //   = prepare_query(*CONNECTION, wicci_sql("wicci_echo_body"));
+    // pub static ref ECHO_REQ: Statement<'static>
+    //   = prepare_query(*CONNECTION, wicci_sql("wicci_echo_request"));
+//  }
+  
+  #[test]
+  fn echo_prepare() {
+    let db = connect();
+    let echo_body
+       = prepare_query(&db, &wicci_sql("wicci_echo_body"));
+    let meta_cols = echo_body.columns();
+    let _ = writeln!(
+      &mut ::std::io::stderr(), "wicci query column info: {:?}", meta_cols
+    );
+  }
+  #[test]
+  fn echo_bin_body() {
+    let db = connect();
+    let echo_body
+       = prepare_query(&db, &wicci_sql("wicci_echo_body"));
+    let maybe_rows = echo_body.query(
+      &[&NO_BYTES, &HUBBA_BYTES, &_BODY_BIN]
+    );
+    match maybe_rows {
+      Err(msg) => {
+        errorln!("Query {} failed with {}", wicci_sql("wicci_echo_body"), msg );
+        assert!(false);
+      }
+      Ok(rows) => {
+        assert_eq!(rows.len(), 1);
+        let row = rows.get(0);
+        assert_eq!(row.len(), 3);
+        let _ = writeln!(&mut ::std::io::stderr(), "{:?}", row);
+        let field0: String = row.get(0);
+        assert_eq!(field0, _BODY_BIN);
+        // let _ = writeln!(
+        //   &mut ::std::io::stderr(), "{} {}: {}", 0, field0.len(), field0
+        // );
+        let field1: String = row.get(1);
+        assert_eq!(field1.len(), 0);
+        // let _ = writeln!(
+        //   &mut ::std::io::stderr(), "{} {}: {}", 1, field1.len(), field1
+        // );
+        let field2: Vec<u8> = row.get(2);
+        assert_eq!(field2, HUBBA_BYTES);
+        // let _ = writeln!(
+        //   &mut ::std::io::stderr(), "{} {}: {:?}", 2, field2.len(), field2
+        // );
+      }
+    }
+  }
+
+  #[test]
+  fn echo_text_body() {
+    let db = connect();
+    let echo_body
+       = prepare_query(&db, &wicci_sql("wicci_echo_body"));
+    let maybe_rows = echo_body.query(
+      &[&NO_BYTES, &HUBBA_BYTES, &_BODY]
+    );
+    match maybe_rows {
+      Err(msg) => {
+        errorln!("Query {} failed with {}", wicci_sql("wicci_echo_body"), msg );
+        assert!(false);
+      }
+      Ok(rows) => {
+        assert_eq!(rows.len(), 1);
+        let row = rows.get(0);
+        assert_eq!(row.len(), 3);
+        let _ = writeln!(&mut ::std::io::stderr(), "{:?}", row);
+        let field0: String = row.get(0);
+        assert_eq!(field0, _BODY);
+        // let _ = writeln!(
+        //   &mut ::std::io::stderr(), "{} {}: {}", 0, field0.len(), field0
+        // );
+        let field1: String = row.get(1);
+        assert_eq!(field1.as_bytes(), HUBBA_BYTES);
+        // let _ = writeln!(
+        //   &mut ::std::io::stderr(), "{} {}: {}", 1, field1.len(), field1
+        // );
+        let field2: Vec<u8> = row.get(2);
+        assert_eq!(field2.len(), 0);
+        // let _ = writeln!(
+        //   &mut ::std::io::stderr(), "{} {}: {:?}", 2, field2.len(), field2
+        // );
+      }
+    }
+  }
+
 }
