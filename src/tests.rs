@@ -2,10 +2,12 @@
 // Tests
 
 use std::io::Write;
-use super::{options,db};
+use super::db;
+use super::options::*;
 // use text;
 
 use std::process;
+use std::str::from_utf8;
 
 use postgres::stmt::Statement;
 
@@ -102,18 +104,18 @@ fn path_req(path: &Bytes) -> ByteVec {
 // implement fmt::Display for Bytes and ByteVec !!
 
 fn test_with( stmt: &Statement, req_buf: &Bytes ) {
+  if *DBUG { println!("{}", from_utf8(req_buf).unwrap()); }
   let no_body: &Bytes = b"";
   let _body: &str = "_body";
   let rows = stmt.query(&[&req_buf, &no_body, &_body]).unwrap_or_else( | err | {
     // log error!!
     // send client sad Reponse structure!!
     // continue to next request!!
-//    let buf = String::from_utf8(req_buf).unwrap_or(String::from("???"));
-    let vec = Vec::from(req_buf); // can we do away with this??
-    let buf = String::from_utf8(vec).unwrap_or(String::from("???"));
-    errorln!("test_with db query error {:?} on {}", err, &buf);
+    let buf = from_utf8(req_buf).unwrap();
+    errorln!("test_with db query error {:?} on {}", err, buf);
     process::exit(40);
   });
+  if *DBUG { println!("Rows returned = {}", rows.len()); }
   for row in rows {
     let hdr: String = row.get(0);
     let text_val: String = row.get_opt(1).unwrap_or("".to_string());
@@ -136,12 +138,12 @@ fn test_with( stmt: &Statement, req_buf: &Bytes ) {
 }
 
 pub fn do_tests() {
-  match options::opt_str("test") {
+  match opt_str("test") {
     None => { },
     Some(test_name) => {
-      println!("Preparing test {}", test_name);
+      if *DBUG { println!("Preparing test {}", test_name); }
       let db = db::connect();
-      let stmt = db::prepare_query(&db, &*options::WICCI_SERVE_SQL);
+      let stmt = db::prepare_query(&db, &*WICCI_SERVE_SQL);
       match &test_name[..] {
         "simple" => test_with( &stmt, &path_req(b"simple") ),
         "fancy" => test_with( &stmt, &path_req(b"fancy") ),
