@@ -1,4 +1,21 @@
-#![plugin(regex_macros)]
+// Wicci Shim Module
+// Utilities for generating HTML code for debugging & error reporting
+// --> Regular HTML should come from the database!
+
+// #![plugin(regex_macros)]
+
+// fn foo() {
+//   let x:() = regex::new("");
+//   }
+
+use regex::Regex;
+
+lazy_static! {
+  pub static ref HTML_ID: Regex = Regex::new(r"^[[:alpha:]]+[[:alnum:]]*$").unwrap();
+  pub static ref HTML_VAL: Regex = Regex::new(r"^[[:graph:] ]*$").unwrap(); // spaces allowed!
+  pub static ref QUOTE: Regex = Regex::new("\"").unwrap();
+}
+
 use std::ascii::{AsciiExt};
 
 use std::fmt::{self, Write};
@@ -16,7 +33,8 @@ pub fn html_format(text: fmt::Arguments)->String {
 }
 
 pub fn html_id(id_str: &str)->String { // stricter than standard!
-  let re = regex!(r"^[[:alpha:]]+[[:alnum:]]*$");
+//  let re = regex!(r"^[[:alpha:]]+[[:alnum:]]*$");
+  let re = &*HTML_ID;
   assert_eq!(re.is_match(&id_str), true);
   id_str.to_ascii_lowercase()
 }
@@ -25,9 +43,11 @@ pub fn html_tag(tag_str: &'static str)->String {
   html_id(&tag_str)
 }
 pub fn html_val(value_str: &str)->String { // stricter than standard!
-  let re = regex!(r"^[[:graph:] ]*$"); // spaces allowed!
+//  let re = regex!(r"^[[:graph:] ]*$"); // spaces allowed!
+  let re = &*HTML_VAL;
   assert_eq!(re.is_match(&value_str), true);
-  let quote = regex!("\"");
+//  let quote = regex!("\"");
+  let quote = &*QUOTE;
   quote.replace_all(&value_str, "&quot;")
 }
 
@@ -36,7 +56,8 @@ pub fn html_attrs(attrs: StrVec)-> String {
   for pair in attrs.chunks(2) {
     write!(
       &mut buf, " {}=\"{}\"", html_attr(&pair[0]), &html_val(&pair[1])
-        );
+        ).unwrap();
+    // and if unwrap() fails??
   }
   buf
 }

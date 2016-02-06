@@ -1,11 +1,27 @@
-/* shim::tinier
- * wrapper for tiny_http
- */
+// Wicci Shim Module
+// Http Request/Response Interface
+// Wrapper for tiny_http
 
-extern crate tiny_http;
-use std::io::Cursor;
-use std::io::Read;
+use std::io::{Read,Cursor};
+use tiny_http;
+use tiny_http::{Server, ServerConfig};
+use std::str::FromStr;
+use std::process;
 
+lazy_static! {
+  pub static ref GET: tiny_http::Method = tiny_http::Method::from_str("GET").unwrap();
+  pub static ref PUT: tiny_http::Method = tiny_http::Method::from_str("PUT").unwrap();
+}
+
+pub fn open_server(port: u16) -> tiny_http::Server {
+  let sc = ServerConfig {addr: ("localhost", port), ssl: None};
+  Server::new(sc).unwrap_or_else( | err | {
+      // log failure!!
+      // shutdown server gracefully!!
+      error!("open_server fails with {:?}", err);
+      process::exit(10);
+		})
+}
 
 pub fn cursor_on<D>(data: D)->Cursor<Vec<u8>> where D: Into<Vec<u8>> {
   Cursor::new(data.into())
@@ -67,6 +83,7 @@ fn append_body(
   match maybe_buf.as_mut() {
     None => size,
     Some(buf) => body.read_to_end(buf).unwrap()
+      // handle failure possibility in unwrap()!!
   }
 }
 

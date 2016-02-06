@@ -1,194 +1,84 @@
-#![feature(convert)]
-#![feature(plugin)]
-#![feature(exit_status)]  // set_exit_status unstable as of 1.1
-#[macro_use]
-extern crate lazy_static;
-extern crate getopts;
+// Wicci Shim Program
+
+// #![feature(plugin)]
+// #![plugin(regex_macros)]
+
+// #![feature(convert)]
+
+#[macro_use] extern crate log;
+extern crate env_logger;
+// use log::LogLevel;
+
 // extern crate hyper;				// more than we need?
 extern crate tiny_http;       // more modest
-
-use std::sync::Arc;
-use std::thread;
-use std::str::FromStr;
+extern crate regex;
 
 extern crate ascii;
-use ascii::AsciiStr;
+// use ascii::AsciiStr;
 use std::ascii::AsciiExt;
 
 extern crate postgres;
-use postgres::{Connection, Statement, SslMode};
-use postgres::error::ConnectError;
-use postgres::Result as PG_Result;
+use postgres::stmt::Statement;
 
-extern crate shim;
-use shim::*;
+#[macro_use]
+extern crate lazy_static;
 
-//	\  /																\  /
-//	 \/  option and argument management	 \/
+use std::process;
+use std::fmt::Write;
+use std::sync::Arc;
+use std::thread;
 
-const NUM_WORKERS_DEFAULT: usize = 4;
-const HTTP_PORT_DEFAULT: u16 = 8080;
-const DB_PORT_DEFAULT: u16 = 5432;
-const DB_HOST_DEFAULT: &'static str = "localhost";
-const DB_NAME_DEFAULT: &'static str = "wicci1";
-const DB_INIT_FUNC_DEFAULT: &'static str = "wicci_ready()";
-const DB_FUNC_DEFAULT: &'static str = "wicci_serve";
-// --> DB_USER_DEFAULT defined below!
+extern crate getopts;
 
-// fetch options which have a default
+pub mod options;
+pub mod tests;
+pub mod tinier;
+pub mod html;
+pub mod db;
 
-/* I'd rather not use String or any other heap-allocated
- * types.  Failing that, I'll try to make such objects less
- * ephemeral, e.g. lazy static.  Failing that, I'll try to
- * make them very ephemeral so that it might be possible to
- * stack-allocate them in the future!
- */
-
-type OptStr = String;
-
-fn opt_default<T: FromStr>(opt_name: &str, dfalt: T)->T {
-  match PGM_OPTS.opt_str(opt_name) {
-    None => dfalt,
-    Some(p) => T::from_str(&p).unwrap_or_else( |_err| {
-      std::env::set_exit_status(10);
-      // no method named `to_string` found for type `<T as core::str::FromStr>::Err`
-      // panic!(err.to_string());
-      panic!(p);
-    } )
+fn echo_requests(server: tiny_http::Server) {
+	for r in server.incoming_requests() {
+    if r.url() == "/favicon.ico" {
+      r.respond( tinier::hdr_response(404, Vec::with_capacity(0)) ).unwrap_or_else( |err| {
+        error!("favicon 404 response error {}", err);
+     } );
+      continue;
+    }
+    println!("method: {}", r.method());
+    println!("url: {}", r.url());
+    println!("http_version: {}", r.http_version());
+    for h in r.headers().iter() {
+      println!("{}: {}", h.field, h.value);
+    }
+    if r.method().eq(&*tinier::GET) || r.method().eq(&*tinier::PUT) {
+      let mut header_data = String::new();
+      for h in r.headers().iter() {
+        writeln!(&mut header_data,
+                 "<dt>{}</dt>\n<dd>{}</dd>",
+                 h.field, h.value ).unwrap();
+        // and if unwrap() fails??
+      }
+      let headers: Vec<tiny_http::Header> = Vec::new();
+      let html_str = html::html_title_contents("shim response",
+        html::html_tag_contents(
+          "dl", vec!(
+            html::html_tag_content("dt", html::html_static("method")),
+            html::html_tag_content("dd", format!("{}", r.method())),
+            html::html_tag_content("dt", html::html_static("url")),
+            html::html_tag_content("dd", format!("{}", r.url())),
+            html::html_tag_content("dt", html::html_static("http_version")),
+            html::html_tag_content("dd", format!("{}", r.http_version())),
+            header_data
+          )
+        )
+      );
+      r.respond(tinier::str_response(200, headers, html_str)).unwrap_or_else( |err| {
+        error!("200 response error {}", err);
+      } );
+    }
+    println!("");
   }
 }
-
-fn opt_str_default(opt_name: &str, dfalt: &str)->String {
-  opt_default::<String>(opt_name, dfalt.to_string())
-}
-
-lazy_static! {
-  static ref PGM_ARGV: Vec<String> = {
-    let argv = std::env::args().collect();
-    argv
-  };
-  static ref PGM_NAME: String = PGM_ARGV[0].clone();
-  static ref PGM_ARGS: &'static[String] = &PGM_ARGV[1..];
-  
-  static ref PGM_OPTIONS: getopts::Options = {
-    let mut opts = getopts::Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.optflag("d", "debug", "trace what's going on");
-    //    opts.optflag("s", "show-args", "show program arguments");
-    //	  opts.optflag("b", "debug-save-blobs", "save received blobs to files");
-    opts.optflag("e", "echo", "echo requests readably");
-	  opts.optopt("w", "num-workers", "", ""); // NUM_WORKERS_DEFAULT
-	  opts.optopt("p", "http-port", "", ""); // HTTP_PORT_DEFAULT
-	  opts.optopt("I", "db-init-func", "", ""); // DB_INIT_FUNC_DEFAULT
-	  opts.optopt("F", "db-func", "", ""); // DB_FUNC_DEFAULT
-	  // db connection attributes: see DBOption
-	  opts.optopt("H", "db-host", "", "db server port"); // DB_HOST_DEFAULT
-    // opts.optopt("A", "db-host-addr", "", ""); // why not just allow numeric db-host??
-    opts.optopt("P", "db-port", "", ""); // DB_PORT_DEFAULT
-	  opts.optopt("N", "db-name", "", ""); // DB_NAME_DEFAULT
-    opts.optopt("U", "db-user", "", "");
-	  opts.optopt("", "db-password", "", "");
-    //	  opts.optopt("", "db-connect-timeout", "", "");
-    opts
-  };
-  
-  static ref PGM_OPTS: getopts::Matches
-		= PGM_OPTIONS.parse( PGM_ARGS.iter() ).
-		unwrap_or_else( |err| {
-      std::env::set_exit_status(11);
-      panic!(err.to_string());
-   	} );
-  
-  static ref DB_USER_DEFAULT: &'static str = "greg"; // get current user???
-  
-  static ref DBUG: bool = PGM_OPTS.opt_present("debug");
-  
-  static ref NUM_WORKERS: usize =
-    opt_default::<usize>("num-workers", NUM_WORKERS_DEFAULT);
-  static ref HTTP_PORT: u16 = opt_default::<u16>("http-port", HTTP_PORT_DEFAULT);
-  static ref DB_INIT_FUNC: OptStr =
-    opt_str_default("db-init-func", DB_INIT_FUNC_DEFAULT);
-  static ref DB_INIT_STR: String =
-    format!("SELECT {}('{}')", *DB_INIT_FUNC, *PGM_NAME); /*
-  Need to sql_literal(DB_INIT_FUNC) and sql_quote(PGM_NAME)!!!
-   */
-  static ref DB_FUNC: OptStr = opt_str_default("db-func", DB_FUNC_DEFAULT);
-  static ref DB_QUERY_STR: String =
-    format!("SELECT h,v,b FROM {}($1, '_body_bin') AS foo(h,v,b)",
-            *DB_FUNC);   //  Need to sql_literal(DB_FUNC)!!!
-  static ref DB_HOST: OptStr = opt_str_default("db-host", DB_HOST_DEFAULT);
-  static ref DB_PORT: u16 = opt_default::<u16>("db-port", DB_PORT_DEFAULT);
-  static ref DB_USER: OptStr = opt_str_default("db-user", *DB_USER_DEFAULT);
-  static ref DB_NAME: OptStr = opt_str_default("db-name", DB_NAME_DEFAULT);
-  
-  // e.g. "postgresql://greg@localhost/greg";
-  static ref PG_DSN: String = {
-    let pw = PGM_OPTS.opt_present("db-password");
-    format!(
-      "postgresql://{}{}{}@{}/{}", *DB_USER,
-      if pw { ":" } else { "" },
-      if pw { PGM_OPTS.opt_str("db-password").unwrap() } else { "".to_string() },
-      *DB_HOST, *DB_NAME )
-  };
-  
-}                              // lazy_static!
-
-// other command-line management
-
-fn print_usage() {
-  let brief = format!("Usage: {} [options]...", *PGM_NAME);
-  print!("{}", PGM_OPTIONS.usage(&brief));
-}
-
-//	 /\																		 /\
-//	/  \  option and argument management	/  \
-
-// fn foo(db: &Connection) {
-//   let f:() = Connection::connect("", &SslMode::None);
-//   let g:() = db.prepare("");
-//	core::result::Result<postgres::Statement<'_>, postgres::error::Error>
-// }
-
-fn pg_try_connect(dsn: &str) -> Result<Connection, ConnectError> {
-  let conn = match Connection::connect(dsn, &SslMode::None) {
-    Ok(conn) => {
-      if *DBUG { println!("Connected to: {}", dsn) };
-      Ok(conn)
-    },
-    Err(e) => {
-      if *DBUG { println!("Connection error: {}", e) };
-      Err(e)
-    }
-  };
-  conn
-}
-
-fn pg_connect() -> Connection {
-  pg_try_connect(&*PG_DSN).unwrap_or_else( | err | {
-    std::env::set_exit_status(12);
-    panic!(err.to_string());
-	})
-}
-
-fn pg_try_prepare<'a>(db: &'a Connection, sql_str: &str) -> PG_Result<Statement<'a>> {
-  let maybe_sql = db.prepare(sql_str);
-  match maybe_sql {
-    Ok(_) => (),
-    Err(ref e) => if *DBUG {
-      println!("Preparing query {} failed with {}", sql_str, e)
-    } else { () }
-  };
-  maybe_sql
-}
-
-fn pg_prepare(db: & Connection) -> Statement {
-  let stmt = pg_try_prepare(db, &*DB_QUERY_STR).unwrap_or_else( | err | {
-    std::env::set_exit_status(13);
-    panic!(err.to_string());
-  });
-  stmt
-}
-
 
 #[cfg(feature = "never")]
 fn make_lower<T: AsciiExt>(bytes: &mut T) {
@@ -212,12 +102,7 @@ fn digits_to_usize(digits: &Vec<u8>) -> Option<usize> {
   Some(val)
 }
 
-// fn pg_stmt_buf_rows<'a>(stmt: &'a Statement, req_buf: Vec<u8>)
-// -> postgres::rows::Rows<'a> {
-//     // let (at_least, _) = rows.size_hint(); // lazy_rows
-// }
-
-fn pg_stmt_req_rows<'a>(
+fn stmt_req_rows<'a>(
   stmt: &'a Statement, req: &'a mut tiny_http::Request
 )-> postgres::rows::Rows<'a> {
   let mut no_vec:  Option<&mut Vec<u8>> = None;
@@ -225,14 +110,17 @@ fn pg_stmt_req_rows<'a>(
   let mut req_buf = Vec::<u8>::with_capacity(req_len);
   let req_len_ = tinier::append_request(&mut Some(&mut req_buf), req);
   assert!(req_len == req_len_);
-  //    pg_stmt_buf_rows(stmt, req_buf)
-  stmt.query(&[&req_buf]).unwrap_or_else( | err | {
-    // replace with Reponse structure describing the error!!
-    std::env::set_exit_status(14);
-    panic!(err.to_string());
+  stmt.query(&[&req_buf]).unwrap_or_else( | err | { // too few args!!!
+    error!("two few query args {}", err);
+    // send client sad Reponse structure!!
+    // continue to next requset!!
+    let buf = String::from_utf8(req_buf).unwrap_or(String::from("???"));
+    error!("stmt_req_rows db query error {:?} on {}", err, &buf);
+    process::exit(1);
   })
 }
 
+#[derive(Debug)]
 struct ResponseData {
   headers: Vec<tiny_http::Header>,
   status_code: i32,
@@ -240,34 +128,39 @@ struct ResponseData {
   body: Vec<u8>
 }
 
-fn response_data(stmt: &Statement, req: &mut tiny_http::Request) -> ResponseData {
-  let rows = pg_stmt_req_rows(stmt, req);
+fn stmt_req_response(stmt: &Statement, req: &mut tiny_http::Request) -> ResponseData {
+  let rows = stmt_req_rows(stmt, req);
+  if *options::DBUG { println!("Request {:?}", rows); }
   let mut rd = ResponseData {
     status_code: -1, // any better default?
     headers: Vec::<tiny_http::Header>::with_capacity( rows.iter().count() ),
     body: Vec::<u8>::with_capacity(0),
     content_length: 0
   };
-  for row in rows {
+  for row in &rows {
     let mut hdr_bytes: Vec<u8> = row.get(0);
     make_lower_vec_u8(&mut hdr_bytes);    
-    // let mut hdr_ascii = <AsciiStr>::from_bytes(&hdr_bytes).unwrap();
-    // make_lower(&mut hdr_ascii);
     let text_bytes:Vec<u8> = row.get(1);
     let bin_bytes:Vec<u8> = row.get(2);
     match hdr_bytes.as_slice() {
       b"_status" => match digits_to_usize(&text_bytes) {
         Some(code) => rd.status_code = code as i32,
-        None => {         // how to just abort this request with error ???
-          std::env::set_exit_status(15);
-          panic!("Illegal _status: {:?}", AsciiStr::from_bytes(&text_bytes));
+        None => {
+          // send appropriate error response to client!!
+          // log failure!!
+          // continue to next request!!
+          error!("illegal db header value {:?}: {:?}", hdr_bytes, text_bytes);
+          process::exit(2);
         }
       },
       b"content-length" => match digits_to_usize(&text_bytes) {
         Some(length) => rd.content_length = length,
-        None => { // how to just abort this request with error ???
-          std::env::set_exit_status(16);
-          panic!("Illegal _status: {:?}", AsciiStr::from_bytes(&text_bytes));
+        None => {
+          // send appropriate error response to client!!
+          // log failure!!
+          // continue to next request!!
+          error!("illegal db header value {:?}: {:?}", hdr_bytes, text_bytes);
+          process::exit(3);
         }
       },
       b"_body_bin" => { rd.body = bin_bytes; },
@@ -275,53 +168,53 @@ fn response_data(stmt: &Statement, req: &mut tiny_http::Request) -> ResponseData
       _ => {
         assert!(text_bytes.len() != 0);
         rd.headers.push(tiny_http::Header::from_bytes(hdr_bytes, text_bytes).unwrap());
+        // handle failure possibility in unwrap()!!
       }
     }
   }
   // make sure we have a valid status_code, content_length, etc.
   assert!(rd.content_length == rd.body.len());
   assert!(rd.status_code > 0);
+  if *options::DBUG { println!("Response {:?}", rd);  }
   rd
 }
 
-fn pg_respond(stmt: &Statement, mut req: tiny_http::Request) {
-  let rd = response_data(stmt, &mut req);
+fn stmt_req_respond(stmt: &Statement, mut req: tiny_http::Request) {
+  let rd = stmt_req_response(stmt, &mut req);
   req.respond( tiny_http::Response::new(
     tiny_http::StatusCode::from(rd.status_code),
-    rd.headers, tinier::cursor_on(rd.body), Some(rd.content_length), None ) );
+    rd.headers, tinier::cursor_on(rd.body), Some(rd.content_length), None ) ).unwrap_or_else( |err| {
+      error!("stmt_req_respond error {}", err);
+    } );
 }
 
 fn handle_requests(server: Arc<tiny_http::Server>) {
-  let mut guards = Vec::with_capacity(*NUM_WORKERS);
+  let mut guards = Vec::with_capacity(*options::NUM_WORKERS);
   
-  for _ in (0 .. *NUM_WORKERS) {
+  for _ in 0 .. *options::NUM_WORKERS {
     let server = server.clone();
     let guard = thread::spawn(move || {
-      let db = pg_connect();
-      let query_stmt = pg_prepare(&db);
+      let db = db::connect();
+      let query_stmt = db::prepare(&db);
       loop {
         let request = server.recv().unwrap();
-        // let mut body_reader: &mut std::io::Read = request.as_reader();
-        //        let response = tiny_http::Response::from_string("hello world".to_string());
-        pg_respond(&query_stmt, request);
+        // handle failure possibility in unwrap()!!
+        stmt_req_respond(&query_stmt, request);
       }
     });
     
     guards.push(guard);
   }
   
-  for g in guards { g.join().unwrap(); }
+  for g in guards { g.join().unwrap(); } // why unwrap??
 }
 
 fn main() {
-  if PGM_OPTS.opt_present("help") { print_usage(); return; }
-	let port = *HTTP_PORT;
-	let server = tiny_http::ServerBuilder::new().
-		with_port(port).build().unwrap_or_else( | err | {
-      std::env::set_exit_status(17);
-      panic!(err.to_string());
-		});
-  if PGM_OPTS.opt_present("echo") {
+  env_logger::init().unwrap();
+  if options::opt_present("help") { options::print_usage(); return; }
+  if options::opt_present("test") { tests::do_tests(); return; }
+	let server = tinier::open_server(*options::HTTP_PORT);
+  if options::opt_present("echo") {
     echo_requests(server);
     return;
   }
