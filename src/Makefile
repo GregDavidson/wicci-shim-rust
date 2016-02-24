@@ -1,4 +1,3 @@
-
 build run:
 	cargo $@
 test:
