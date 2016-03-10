@@ -66,7 +66,7 @@ fn append_bytes_delim(
   append_bytes(maybe_buf, bytes) + append_bytes(maybe_buf, delim)
 }
 
-fn append_headers(
+fn append_http_headers(
   maybe_buf: &mut Option<&mut Vec<u8>>, hdrs: &[tiny_http::Header]
 ) -> usize {
   let cs = b": ";
@@ -77,7 +77,7 @@ fn append_headers(
   })
 }
 
-fn append_body(
+pub fn append_body(
   maybe_buf: &mut Option<&mut Vec<u8>>, body: &mut Read, size: usize
  ) -> usize {
   match maybe_buf.as_mut() {
@@ -105,7 +105,7 @@ fn append_http_version(
   4
 }
 
-fn append_request_sans_body(
+pub fn append_headers(
   b: &mut Option<&mut Vec<u8>>, r: &tiny_http::Request
 ) -> usize {
   let sp = b" ";
@@ -113,17 +113,18 @@ fn append_request_sans_body(
   append_bytes_delim(b, &r.method().as_str().as_bytes(), sp)
     + append_bytes_delim(b, &r.url().as_bytes(), sp)
     + append_http_version(b, &r.http_version())
-    + append_headers(b, r.headers())
+    + append_http_headers(b, r.headers())
     + append_bytes(b, nl)
 }
 
-pub fn append_request(
+// obsolete??
+fn append_request(
   b: &mut Option<&mut Vec<u8>>, r: &mut tiny_http::Request
 ) -> usize {
-  let len_sans_body = append_request_sans_body(b, r);
+  let len_headers = append_headers(b, r);
   let body_len = r.body_length().unwrap_or(0);
   let mut body_reader = r.as_reader();
-  len_sans_body + append_body(b, body_reader, body_len)
+  len_headers + append_body(b, body_reader, body_len)
 }
 
 // Notes for future improvements:

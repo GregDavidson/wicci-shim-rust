@@ -106,15 +106,19 @@ fn stmt_req_rows<'a>(
   stmt: &'a Statement, req: &'a mut tiny_http::Request
 )-> postgres::rows::Rows<'a> {
   let mut no_vec:  Option<&mut Vec<u8>> = None;
-  let req_len = tinier::append_request(&mut no_vec, req);
-  let mut req_buf = Vec::<u8>::with_capacity(req_len);
-  let req_len_ = tinier::append_request(&mut Some(&mut req_buf), req);
-  assert!(req_len == req_len_);
-  stmt.query(&[&req_buf]).unwrap_or_else( | err | { // too few args!!!
-    error!("two few query args {}", err);
+  let headers_len = tinier::append_headers(&mut no_vec, req);
+  let mut headers_buf = Vec::<u8>::with_capacity(headers_len);
+  let headers_len_ = tinier::append_headers(&mut Some(&mut headers_buf), req);
+  assert!(headers_len == headers_len_);
+  let body_len = tinier::append_headers(&mut no_vec, req);
+  let mut body_buf = Vec::<u8>::with_capacity(body_len);
+  let body_len_ = tinier::append_headers(&mut Some(&mut body_buf), req);
+  assert!(body_len == body_len_);
+  stmt.query(&[&headers_buf, &body_buf]).unwrap_or_else( | err | {
+    error!("{}", err);
     // send client sad Reponse structure!!
     // continue to next requset!!
-    let buf = String::from_utf8(req_buf).unwrap_or(String::from("???"));
+    let buf = String::from_utf8(headers_buf).unwrap_or(String::from("???"));
     error!("stmt_req_rows db query error {:?} on {}", err, &buf);
     process::exit(1);
   })
