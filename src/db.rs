@@ -7,23 +7,12 @@
 //	core::result::Result<postgres::Statement<'_>, postgres::error::Error>
 // }
 
-use std::io::Write;
-
-// copy of def in main.rs -- see that one!!
-macro_rules! errorln(
-    ($($arg:tt)*) => (
-      match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-        Ok(_) => {},
-        Err(x) => panic!("Unable to write to stderr: {}", x),
-      }
-    )
-);
-
 // * need to define database connection pool structures!!
 
 use std::process;
 
-use postgres::{Connection, Statement, SslMode};
+use postgres::stmt::Statement;
+use postgres::{Connection, SslMode};
 use postgres::error::ConnectError;
 use postgres::Result as PG_Result;
 use std::result::Result;
@@ -36,7 +25,7 @@ fn try_prepare<'a>(db: &'a Connection, sql_str: &str) -> PG_Result<Statement<'a>
   match maybe_sql {
     Ok(_) => (),
     Err(ref e) => if *options::DBUG {
-      errorln!("Preparing query {:?} failed with {:?}", sql_str, e)
+      error!("Preparing query {:?} failed with {:?}", sql_str, e)
     } else { () }
   };
   maybe_sql
@@ -47,7 +36,7 @@ pub fn prepare_query<'a>(db: &'a Connection, sql_str: &str) -> Statement<'a> {
     // notify clients db is unavailable!!
     // log &alert appropriate sysadmin!!
     // try to continue or shutdown gracefully??
-    errorln!("db prepare statement error {:?}", err);
+    error!("db prepare statement error {:?}", err);
     process::exit(30);
   });
   stmt
@@ -59,8 +48,9 @@ pub fn prepare(db: & Connection) -> Statement {
 
 fn try_init(conn: &mut Connection) -> PG_Result<()> {
   let init_stmt = prepare_query(conn, &*options::DB_INIT_STMT);
-  let rows =  init_stmt.query( &[ &*options::PGM_NAME ] ).unwrap_or_else( |err| {
-    errorln!("db init error {:?}", err);
+  // let rows =
+  init_stmt.query( &[ &*options::PGM_NAME ] ).unwrap_or_else( |err| {
+    error!("db init error {:?}", err);
     process::exit(31);
   });
   // how about we show the result if debugging??
@@ -69,7 +59,7 @@ fn try_init(conn: &mut Connection) -> PG_Result<()> {
 }
 
 fn try_connect(dsn: &str) -> Result<Connection, ConnectError> {
-  let conn = try!( Connection::connect(dsn, &SslMode::None) );
+  let conn = try!( Connection::connect(dsn, SslMode::None) );
   if *options::DBUG { println!("Connected to PostgreSQL: {}", dsn); }
   Ok(conn)
 }
@@ -79,14 +69,14 @@ pub fn connect() -> Connection {
     // notify client db is unavailable??
     // log &alert appropriate sysadmin!!
     // continue to try further requests or shutdown??
-    errorln!("db connect error {:?}", err);
+    error!("db connect error {:?}", err);
     process::exit(32);
 	});
   try_init(&mut conn).unwrap_or_else( | err | {
     // notify client db is unavailable??
     // log &alert appropriate sysadmin!!
     // continue to try further requests or shutdown??
-    errorln!("db init error {:?}", err);
+    error!("db init error {:?}", err);
     process::exit(33);
 	});
   conn

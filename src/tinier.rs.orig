@@ -4,9 +4,16 @@
 
 use std::io::{Read,Cursor};
 use tiny_http;
+<<<<<<< HEAD
 use tiny_http::{Server, ServerConfig};
 use std::str::FromStr;
 use std::process;
+=======
+use std::str::FromStr;
+use std::process;
+use html;
+use std::fmt::Write;
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
 
 lazy_static! {
   pub static ref GET: tiny_http::Method = tiny_http::Method::from_str("GET").unwrap();
@@ -14,11 +21,18 @@ lazy_static! {
 }
 
 pub fn open_server(port: u16) -> tiny_http::Server {
+<<<<<<< HEAD
   let sc = ServerConfig {addr: ("localhost", port), ssl: None};
   Server::new(sc).unwrap_or_else( | err | {
       // log failure!!
       // shutdown server gracefully!!
       error!("open_server fails with {:?}", err);
+=======
+  tiny_http::ServerBuilder::new().
+		with_port(port).build().unwrap_or_else( | err | {
+      // log failure!! shutdown server gracefully!!
+      errorln!("open_server fails with {:?}", err);
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
       process::exit(10);
 		})
 }
@@ -66,7 +80,7 @@ fn append_bytes_delim(
   append_bytes(maybe_buf, bytes) + append_bytes(maybe_buf, delim)
 }
 
-fn append_http_headers(
+fn append_headers(
   maybe_buf: &mut Option<&mut Vec<u8>>, hdrs: &[tiny_http::Header]
 ) -> usize {
   let cs = b": ";
@@ -77,7 +91,7 @@ fn append_http_headers(
   })
 }
 
-pub fn append_body(
+fn append_body(
   maybe_buf: &mut Option<&mut Vec<u8>>, body: &mut Read, size: usize
  ) -> usize {
   match maybe_buf.as_mut() {
@@ -105,7 +119,7 @@ fn append_http_version(
   4
 }
 
-pub fn append_headers(
+fn append_request_sans_body(
   b: &mut Option<&mut Vec<u8>>, r: &tiny_http::Request
 ) -> usize {
   let sp = b" ";
@@ -113,20 +127,73 @@ pub fn append_headers(
   append_bytes_delim(b, &r.method().as_str().as_bytes(), sp)
     + append_bytes_delim(b, &r.url().as_bytes(), sp)
     + append_http_version(b, &r.http_version())
-    + append_http_headers(b, r.headers())
+    + append_headers(b, r.headers())
     + append_bytes(b, nl)
 }
 
-// obsolete??
-fn append_request(
+pub fn append_request(
   b: &mut Option<&mut Vec<u8>>, r: &mut tiny_http::Request
 ) -> usize {
-  let len_headers = append_headers(b, r);
+  let len_sans_body = append_request_sans_body(b, r);
   let body_len = r.body_length().unwrap_or(0);
   let mut body_reader = r.as_reader();
-  len_headers + append_body(b, body_reader, body_len)
+  len_sans_body + append_body(b, body_reader, body_len)
 }
 
+<<<<<<< HEAD
+=======
+pub fn echo_requests(server: tiny_http::Server) {
+	for r in server.incoming_requests() {
+    if r.url() == "/favicon.ico" {
+      r.respond( hdr_response(404, Vec::with_capacity(0)) );
+      continue;
+    }
+    println!("method: {}", r.method());
+    println!("url: {}", r.url());
+    println!("http_version: {}", r.http_version());
+    for h in r.headers().iter() {
+      println!("{}: {}", h.field, h.value);
+    }
+    if r.method().eq(&*GET) || r.method().eq(&*PUT) {
+      let mut header_data = String::new();
+      for h in r.headers().iter() {
+        writeln!(&mut header_data,
+                 "<dt>{}</dt>\n<dd>{}</dd>",
+                 h.field, h.value ).unwrap();
+        // and if unwrap() fails??
+      }
+      let headers: Vec<tiny_http::Header> = Vec::new();
+      let html_str = html::html_title_contents("shim response",
+        html::html_tag_contents(
+          "dl", vec!(
+            html::html_tag_content("dt", html::html_static("method")),
+            html::html_tag_content("dd", format!("{}", r.method())),
+            html::html_tag_content("dt", html::html_static("url")),
+            html::html_tag_content("dd", format!("{}", r.url())),
+            html::html_tag_content("dt", html::html_static("http_version")),
+            html::html_tag_content("dd", format!("{}", r.http_version())),
+            header_data
+          )
+        )
+      );
+      r.respond(str_response(200, headers, html_str));
+    }
+    println!("");
+  }
+}
+
+
+#[cfg(test)]
+mod test {
+  // use super::*;
+  
+  #[test]
+  fn test1() {
+    
+  }
+}
+
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
 // Notes for future improvements:
 
 /*

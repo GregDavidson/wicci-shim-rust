@@ -2,6 +2,7 @@
 // Utilities for generating HTML code for debugging & error reporting
 // --> Regular HTML should come from the database!
 
+<<<<<<< HEAD
 // #![plugin(regex_macros)]
 
 // fn foo() {
@@ -16,6 +17,11 @@ lazy_static! {
   pub static ref QUOTE: Regex = Regex::new("\"").unwrap();
 }
 
+=======
+// until regex! is fixed in regex_macros we need
+use regex::Regex;
+
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
 use std::ascii::{AsciiExt};
 
 use std::fmt::{self, Write};
@@ -33,8 +39,13 @@ pub fn html_format(text: fmt::Arguments)->String {
 }
 
 pub fn html_id(id_str: &str)->String { // stricter than standard!
+<<<<<<< HEAD
 //  let re = regex!(r"^[[:alpha:]]+[[:alnum:]]*$");
   let re = &*HTML_ID;
+=======
+  let re = Regex::new(r"^[[:alpha:]]+[[:alnum:]]*$").unwrap();
+//  let re = regex!(r"^[[:alpha:]]+[[:alnum:]]*$");
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
   assert_eq!(re.is_match(&id_str), true);
   id_str.to_ascii_lowercase()
 }
@@ -44,10 +55,17 @@ pub fn html_tag(tag_str: &'static str)->String {
 }
 pub fn html_val(value_str: &str)->String { // stricter than standard!
 //  let re = regex!(r"^[[:graph:] ]*$"); // spaces allowed!
+<<<<<<< HEAD
   let re = &*HTML_VAL;
   assert_eq!(re.is_match(&value_str), true);
 //  let quote = regex!("\"");
   let quote = &*QUOTE;
+=======
+  let re = Regex::new(r"^[[:graph:] ]*$").unwrap();
+  assert_eq!(re.is_match(&value_str), true);
+//  let quote = regex!("\"");
+  let quote = Regex::new("\"").unwrap();
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
   quote.replace_all(&value_str, "&quot;")
 }
 
@@ -103,3 +121,16 @@ pub fn html_title_contents(title_h1: &'static str, contents: String)->String {
     Some(&title_h1_str), Some(&title_h1_str), vec![contents]
       )
 }
+<<<<<<< HEAD
+=======
+
+#[cfg(test)]
+mod test {
+//  use super::*;
+  
+  #[test]
+  fn test1() {
+    
+  }
+}
+>>>>>>> 3a2936cc6082c6f4b1c32ccc5814481f8b6fdc9b
