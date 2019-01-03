@@ -1,11 +1,10 @@
 target
-*.lock
+.??*
 *~
 [Tt]mp
 [Tt]emp
 Limbo/
 TAGS
-.emacs.desktop
 GREG*
 STATUS
 [Ff]oo
@@ -16,3 +15,6 @@ bar.*
 *.tmp
 *.foo
 *.bar
+*.ed
+*.script
+breakpoints
