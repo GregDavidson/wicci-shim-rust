@@ -11,7 +11,9 @@ enum Message {
 }
 
 pub struct ThreadPool {
-  workers: Vec<Worker>,
+  num_workers: usize,
+  max_workers: usize,
+  wait_milliseconds: Duration, // time to wait for a worker to become available when we have max_workers
   sender: mpsc::Sender<Message>,
 }
 
@@ -35,45 +37,61 @@ impl ThreadPool {
   /// # Panics
   ///
   /// The `new` function will panic if the size is zero.
-  pub fn new(size: usize) -> ThreadPool {
-    assert!(size > 0);
-    let (sender, receiver) = mpsc::channel();
+  pub fn new(max_workers: usize, wait_milliseconds: Duration) -> ThreadPool {
+    assert!(max_workers > 0);
+
+    let (sender, receiver) = mpsc::sync_channel(0); // rendezvous channel
     let receiver = Arc::new(Mutex::new(receiver));
-    let mut workers = Vec::with_capacity(size);
     
-    for id in 0..size {
-      workers.push(Worker::new(id, Arc::clone(&receiver)));
-    }
-    
-    ThreadPool { workers, sender }
+    ThreadPool { num_workers: 0, max_workers, wait_milliseconds, sender }
   }
+
+  // reasons why an execute might fail
+  enum ExecuteFail {
+    WeAreBusy,                   // pool is at max and all workers busy
+    Disconnected                 // wait, how could this happen, to us??
+  };
   
-  pub fn execute<F>(&self, f: F)
+  pub fn execute<F>(&self, f: F) -> Result( (), ExecuteFail )
     where  F: FnOnce() + Send + 'static
   {
     let job = Box::new(f);
     
-    self.sender.send(Message::NewJob(job)).unwrap();
+    loop {
+      match self.sender.try_send(Message::NewJob(job)) {
+        Ok(_) => { // rendezvous successful, package delivered
+          if self.sender.try_send(Message::NewJob(job)) {
+            return Ok( () )
+          },
+          Err(e) => match e {
+            Full => { // no worker available
+              if self.num_workers < self.max_workers { // spawn a new worker
+                let _ = Worker::new(id, job, Arc::clone(&receiver));
+                ++self.num_workers;
+                return ();
+              } else {
+                // sleep and try again
+                thread::sleep(Duration::from_millis(wait_milliseconds));
+              }
+            },
+            Disconnected => {
+              return Disconnected;
+            }
+          }
+        }
+      }
+    }
   }
-}
 
 impl Drop for ThreadPool {
   fn drop(&mut self) {
     eprintln!("Sending terminate message to all workers.");
     
-    for _ in &mut self.workers {
+    eprintln!("Shutting down all workers.");
+    for _ in self.num_workers {
       self.sender.send(Message::Terminate).unwrap();
     }
-    
-    eprintln!("Shutting down all workers.");
-    
-    for worker in &mut self.workers {
-      eprintln!("Shutting down worker {}", worker.id);
-      
-      if let Some(thread) = worker.thread.take() {
-        thread.join().unwrap();
-      }
-    }
+    eprintln!("All workers shut down.");
   }
 }
 
@@ -83,9 +101,10 @@ struct Worker {
 }
 
 impl Worker {
-  fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
+  fn new(id: usize, job: Job, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
     
     let thread = thread::spawn(move ||{
+      job.call_box();           // run our first job
       loop {
         let message = receiver.lock().unwrap().recv().unwrap();
         
