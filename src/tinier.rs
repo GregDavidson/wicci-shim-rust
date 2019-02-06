@@ -123,7 +123,7 @@ fn append_request(
 ) -> usize {
   let len_headers = append_headers(b, r);
   let body_len = r.body_length().unwrap_or(0);
-  let mut body_reader = r.as_reader();
+  let body_reader = r.as_reader();
   len_headers + append_body(b, body_reader, body_len)
 }
 

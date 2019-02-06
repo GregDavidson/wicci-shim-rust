@@ -12,10 +12,10 @@
 use std::process;
 
 use postgres::stmt::Statement;
-use postgres::{Connection, SslMode};
-use postgres::error::ConnectError;
+use postgres::{Connection, TlsMode};
+// use postgres::error::ConnectError;
 use postgres::Result as PG_Result;
-use std::result::Result;
+// use std::result::Result;
 
 use super::options;
 
@@ -58,8 +58,8 @@ fn try_init(conn: &mut Connection) -> PG_Result<()> {
   Ok(())
 }
 
-fn try_connect(dsn: &str) -> Result<Connection, ConnectError> {
-  let conn = try!( Connection::connect(dsn, SslMode::None) );
+fn try_connect(dsn: &str) -> PG_Result<Connection> {
+  let conn = try!( Connection::connect(dsn, TlsMode::None) );
   if *options::DBUG { println!("Connected to PostgreSQL: {}", dsn); }
   Ok(conn)
 }

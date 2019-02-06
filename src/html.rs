@@ -16,7 +16,7 @@ lazy_static! {
   pub static ref QUOTE: Regex = Regex::new("\"").unwrap();
 }
 
-use std::ascii::{AsciiExt};
+// use std::ascii::{AsciiExt};
 
 use std::fmt::{self, Write};
 
@@ -48,7 +48,7 @@ pub fn html_val(value_str: &str)->String { // stricter than standard!
   assert_eq!(re.is_match(&value_str), true);
 //  let quote = regex!("\"");
   let quote = &*QUOTE;
-  quote.replace_all(&value_str, "&quot;")
+  quote.replace_all(&value_str, "&quot;").to_string()
 }
 
 pub fn html_attrs(attrs: StrVec)-> String {

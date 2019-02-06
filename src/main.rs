@@ -15,7 +15,7 @@ extern crate regex;
 
 extern crate ascii;
 // use ascii::AsciiStr;
-use std::ascii::AsciiExt;
+// use std::ascii::AsciiExt;
 
 extern crate postgres;
 use postgres::stmt::Statement;
@@ -104,7 +104,7 @@ fn digits_to_usize(digits: &Vec<u8>) -> Option<usize> {
 
 fn stmt_req_rows<'a>(
   stmt: &'a Statement, req: &'a mut tiny_http::Request
-)-> postgres::rows::Rows<'a> {
+)-> postgres::rows::Rows<> {
   let mut no_vec:  Option<&mut Vec<u8>> = None;
   let headers_len = tinier::append_headers(&mut no_vec, req);
   let mut headers_buf = Vec::<u8>::with_capacity(headers_len);
@@ -214,7 +214,7 @@ fn handle_requests(server: Arc<tiny_http::Server>) {
 }
 
 fn main() {
-  env_logger::init().unwrap();
+  env_logger::init();
   if options::opt_present("help") { options::print_usage(); return; }
   if options::opt_present("test") { tests::do_tests(); return; }
 	let server = tinier::open_server(*options::HTTP_PORT);
